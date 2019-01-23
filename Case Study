@@ -1,0 +1,225 @@
+package com.perschaols.my_case_study.servlets;
+
+import java.io.IOException;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
+
+import javax.servlet.RequestDispatcher;
+import javax.servlet.ServletException;
+import javax.servlet.annotation.WebServlet;
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import javax.servlet.http.HttpSession;
+
+import org.apache.commons.validator.routines.EmailValidator;
+
+import com.perscholas.my_case_study.DAO.CustomerDAO;
+import com.perscholas.my_case_study.DAO.ProductDAO;
+import com.perscholas.my_case_study.models.Customer;
+import com.perscholas.my_case_study.models.Product;
+
+/**
+ * Servlet implementation class Index
+ */
+@WebServlet(urlPatterns = {"/","/Index"})
+public class Index extends HttpServlet {
+	private static final long serialVersionUID = 1L;
+	String message = "";
+	List<String> errors = new ArrayList<String>();
+
+    /**
+     * @see HttpServlet#HttpServlet()
+     */
+    public Index() {
+        super();
+        // TODO Auto-generated constructor stub
+    }
+
+    protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+		doGet(request, response);
+	}
+
+	protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+		String action = request.getServletPath();
+        try {
+            switch (action) {
+            case "/newCustomerForm":
+            	showRegisterForm(request,response);
+            	break;
+            case "/registerCustomer":
+                registerCustomer(request, response);
+                break;
+            case "/login":
+                loginCustomer(request, response);
+                break;
+            case "/storefront":
+            	showStoreFront(request,response);
+            	break;
+            case "/products":
+            	newProductForm(request,response);
+            	break;
+            case "/createProduct":
+            	createProduct(request,response);
+            	break;
+            case "/logout":
+            	logout(request,response);
+            	break;
+            default:
+        		RequestDispatcher rd = request.getRequestDispatcher("/Views/Index.jsp");
+        		rd.forward(request, response);
+        		break;
+            }
+        } catch (SQLException ex) {
+            throw new ServletException(ex);
+        }
+        
+	}
+	
+	private void showRegisterForm(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+		RequestDispatcher rd = request.getRequestDispatcher("/Views/Register.jsp");
+		rd.forward(request, response);
+	}
+	
+    private void registerCustomer(HttpServletRequest request, HttpServletResponse response)
+            throws SQLException, IOException, ServletException {
+        String name = request.getParameter("name");
+        String email = request.getParameter("email");
+        String password = request.getParameter("password");
+        String password_confirm = request.getParameter("password_confirm");
+        
+        errors.clear();
+        
+        if (name.equals("") || name.length() < 3) {
+        	errors.add("Name cannot be empty and must have more than 2 characters");
+        }
+        
+//        if (!isEmail(email)) {
+//        	errors.add("Please enter a valid email address");
+//        }
+
+        EmailValidator validator = EmailValidator.getInstance();
+        if (!validator.isValid(email)) {
+        	errors.add("Please enter a valid email address");
+        }
+        
+        if (!password.equals(password_confirm)) {
+        	errors.add("Passwords do not match.");
+        }
+        
+        if (!errors.isEmpty()) {
+			request.setAttribute("errors", errors);
+			RequestDispatcher rd = request.getRequestDispatcher("/newCustomerForm");
+			rd.forward(request, response);
+        } else {
+        Customer newCustomer = new Customer(name, email, password);
+        CustomerDAO c_dao = new CustomerDAO();
+        int returnId = c_dao.registerCustomer(newCustomer);
+        System.out.println(returnId);
+        response.sendRedirect("main");
+        }
+    }
+    
+    private void loginCustomer(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+    	HttpSession session = request.getSession();
+		String email = request.getParameter("email");
+		String password = request.getParameter("password");
+		
+		errors.clear();
+		//Login Validation
+		if (email.isEmpty()) {
+			errors.add("Please enter a valid user name");
+		}
+		if (password.isEmpty()) {
+			errors.add("Please enter a password");
+		}
+		
+		if (!errors.isEmpty()) {
+			request.setAttribute("errors", errors);
+			RequestDispatcher rd = request.getRequestDispatcher("/main");
+			rd.forward(request, response);
+		} else {
+			Customer c = new Customer();
+			c.setEmail(email);
+			CustomerDAO dao = new CustomerDAO();
+			Customer d = dao.loginCustomer(c.getEmail());
+			
+			if (d.getEmail() == null) {
+				message = "User name not found.  Please try again or register.";
+				session.setAttribute("currentUser", null);
+				request.setAttribute("validation", message);
+				RequestDispatcher rd = request.getRequestDispatcher("main");
+				rd.forward(request, response);
+			}
+			
+			if (d.getPassword().equals(password)) {
+				session.setAttribute("currentUser", d);
+				response.sendRedirect("storefront");
+			} else {
+				message = "Invalid login.";
+				session.setAttribute("currentUser", null);
+				request.setAttribute("validation", message);
+				RequestDispatcher rd = request.getRequestDispatcher("main");
+				rd.forward(request, response);
+			}
+		}
+    }
+    
+    private void showStoreFront(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException, SQLException {
+		HttpSession session = request.getSession();
+		if (session.getAttribute("currentUser") != null) {
+			request.setAttribute("currentUser", session.getAttribute("currentUser"));
+
+	    	RequestDispatcher rd = request.getRequestDispatcher("/Views/StoreFront.jsp");
+			rd.forward(request, response);
+		} else {
+	    	response.sendRedirect("main");
+		}
+    }
+    
+    private void newProductForm(HttpServletRequest request, HttpServletResponse response) throws SQLException, ServletException, IOException {
+    	HttpSession session = request.getSession();
+    	
+		if (session.getAttribute("currentUser") != null) {
+			request.setAttribute("currentUser", session.getAttribute("currentUser"));
+			ProductDAO p_dao = new ProductDAO();
+			List<Product> all_products = p_dao.getAllProducts();
+			request.setAttribute("all_products", all_products);
+			
+	    	RequestDispatcher rd = request.getRequestDispatcher("/Views/ProductsPage.jsp");
+			rd.forward(request, response);
+		} else {
+	    	response.sendRedirect("main");
+		}
+    }
+    
+    private void createProduct(HttpServletRequest request, HttpServletResponse response) throws IOException, SQLException {
+    	HttpSession session = request.getSession();
+    	
+		if (session.getAttribute("currentUser") != null) {
+	        String name = request.getParameter("name");
+	        double price = Double.parseDouble(request.getParameter("price"));
+	        int quantity_available = Integer.parseInt(request.getParameter("quantity_available"));
+	 
+	        Product newProduct = new Product(name, price, quantity_available);
+	        ProductDAO p_dao = new ProductDAO();
+	        int returnId = p_dao.createProduct(newProduct);
+	        System.out.println(returnId);
+	        response.sendRedirect("products");
+		} else {
+	    	response.sendRedirect("main");
+		}
+    }
+    
+    private void logout(HttpServletRequest request, HttpServletResponse response) throws IOException {
+    	HttpSession session = request.getSession();
+    	session.invalidate();
+    	response.sendRedirect("main");
+    }
+    
+    private boolean isEmail(String s) {
+        return s.matches("^[-0-9a-zA-Z.+_]+@[-0-9a-zA-Z.+_]+\\.[a-zA-Z]{2,4}");
+    }
+
+}
